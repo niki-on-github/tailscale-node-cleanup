@@ -6,11 +6,6 @@ if [ -z "${TAILNET_ID}" ]; then
   exit 1
 fi
 
-if [ -z "${NODE_NAME}" ]; then
-  echo "Env NODE_NAME is not set!"
-  exit 1
-fi
-
 if [ -z "${TS_CLIENT_ID}" ]; then
   echo "Env TS_CLIENT_ID is not set!"
   exit 1
@@ -22,10 +17,16 @@ if [ -z "${TS_CLIENT_SECRET}" ]; then
 fi
 
 TOKEN=$(curl -s -d "client_id=${TS_CLIENT_ID}" -d "client_secret=${TS_CLIENT_SECRET}" "https://api.tailscale.com/api/v2/oauth/token" | jq -r '.access_token')
-IDS=$(curl -s "https://api.tailscale.com/api/v2/tailnet/$TAILNET_ID/devices" -H "Authorization: Bearer ${TOKEN}" | jq -r ".devices[] | select(.hostname | contains(\"$NODE_NAME\")) | .nodeId")
+
+if [ -n "${CLEANUP_HOSTNAME}" ]; then
+  IDS=$(curl -s "https://api.tailscale.com/api/v2/tailnet/$TAILNET_ID/devices" -H "Authorization: Bearer ${TOKEN}" | jq -r ".devices[] | select(.hostname | contains(\"$CLEANUP_HOSTNAME\")) | .nodeId")
+else
+  IDS=$(curl -s "https://api.tailscale.com/api/v2/tailnet/$TAILNET_ID/devices" -H "Authorization: Bearer ${TOKEN}" | jq -r ".devices[] | select(.tags[]? | contains(\"${CLEANUP_TAG:-k8s}\")) | select(.connectedToControl == false) | .nodeId")
+fi
+
 for ID in ${IDS}; do
   echo "Deleting device ${ID}";
   curl -s -X DELETE "https://api.tailscale.com/api/v2/device/${ID}" -H "Authorization: Bearer ${TOKEN}"
 done
 
-sleep 5
+sleep 1
