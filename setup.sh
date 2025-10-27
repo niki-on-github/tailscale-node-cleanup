@@ -29,4 +29,18 @@ for ID in ${IDS}; do
   curl -s -X DELETE "https://api.tailscale.com/api/v2/device/${ID}" -H "Authorization: Bearer ${TOKEN}"
 done
 
+# tailscale does not support persistent hostnames, this is our workaround to rename the number appended hostnames back to our desired name
+ITEMS=$(curl -s "https://api.tailscale.com/api/v2/tailnet/$TAILNET_ID/devices" -H "Authorization: Bearer ${TOKEN}" | jq -r ".devices[] | select(.tags[]? | contains(\"${CLEANUP_TAG:-k8s}\")) | select(.connectedToControl == true) | select(.name | test(\"-[0-9]+\")) | [.nodeId, .hostname] | @tsv")
+
+if [ -n "$ITEMS" ]; then
+  echo "$ITEMS" | while IFS=$'\t' read -r nodeId name; do
+    echo "Fix name for $nodeId : $name"
+    curl -s "https://api.tailscale.com/api/v2/device/$nodeId/name" \
+      --request POST \
+      --header "Content-Type: application/json" \
+      --header "Authorization: Bearer $TOKEN" \
+      --data "{ \"name\": \"$name\" }"
+  done
+fi
+
 sleep 1
